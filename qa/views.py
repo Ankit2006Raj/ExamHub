@@ -4,7 +4,7 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.models import User
 from qa.models import Answer, Question, Test, TestSubmission
-from django.contrib.auth.forms import AuthenticationForm,UserCreationForm
+from django.contrib.auth.forms import AuthenticationForm, UserCreationForm
 from django.utils import timezone
 from datetime import datetime
 import pyttsx3 as pt
@@ -12,25 +12,45 @@ import pyttsx3 as pt
 
 # speaking function
 def speak(text):
-    engine=pt.init()
-    engine.say(text)
-    engine.setProperty('rate', 150)
-    engine.setProperty('volume', 0.8)
-    engine.setProperty('voice', 'english+f3')
-    engine.runAndWait()
+    try:
+        engine = pt.init()
+        engine.say(text)
+        engine.setProperty('rate', 150)
+        engine.setProperty('volume', 0.8)
+        engine.setProperty('voice', 'english+f3')
+        engine.runAndWait()
+    except Exception:
+        pass  # Don't crash if TTS fails
+
+
+def calculate_score(test, user):
+    """Calculate MCQ score for a user on a test."""
+    score = 0
+    for question in test.questions.filter(question_type='MCQ'):
+        answer = Answer.objects.filter(question=question, user=user).first()
+        if answer and answer.answer_text.upper() == (question.correct_answer or '').upper():
+            score += question.marks
+    return score
 
 def home(request):
-    # Get all tests
     now = timezone.now()
     available_tests = Test.objects.filter(is_active=True, start_time__lte=now, end_time__gte=now)
     upcoming_tests = Test.objects.filter(is_active=True, start_time__gt=now).order_by('start_time')
     expired_tests = Test.objects.filter(is_active=True, end_time__lt=now).order_by('-end_time')[:5]
-    
-    context={
+
+    # Tests the logged-in user has already completed
+    completed_test_ids = set()
+    if request.user.is_authenticated:
+        completed_test_ids = set(
+            TestSubmission.objects.filter(user=request.user).values_list('test_id', flat=True)
+        )
+
+    context = {
         'available_tests': available_tests,
         'upcoming_tests': upcoming_tests,
         'expired_tests': expired_tests,
-        'now': now
+        'completed_test_ids': completed_test_ids,
+        'now': now,
     }
     return render(request, 'home.html', context)
 
@@ -42,7 +62,7 @@ def take_test(request, test_id):
     except Test.DoesNotExist:
         messages.error(request, "Test not found.")
         return redirect('home')
-    
+
     # Check if test is available
     if not test.is_available():
         if test.is_upcoming():
@@ -50,59 +70,155 @@ def take_test(request, test_id):
         elif test.is_expired():
             messages.error(request, f"Test '{test.name}' has expired.")
         return redirect('home')
-    
+
     # Check if user already submitted
     if TestSubmission.objects.filter(test=test, user=request.user).exists():
         messages.info(request, f"You have already completed the '{test.name}' test.")
-        return redirect('home')
-    
+        return redirect('test_result', test_id=test.id)
+
     questions = test.questions.all().order_by('id')
-    
-    if request.method=="POST":
-        # Handle final submit
+
+    if request.method == "POST":
+        # Handle final submit (manual or auto from timer)
         if request.POST.get("final_submit"):
+            time_taken = int(request.POST.get("time_taken_seconds", 0))
+            score = calculate_score(test, request.user)
             TestSubmission.objects.create(
                 test=test,
                 user=request.user,
-                is_completed=True
+                is_completed=True,
+                score=score,
+                time_taken_seconds=time_taken,
             )
             messages.success(request, f"Test '{test.name}' submitted successfully!")
-            return redirect('test_completed', test_id=test.id)
-        
-        # Handle answer submission/update
-        question_id=request.POST.get("question_id")
-        answer_text=request.POST.get("answer")
+            return redirect('test_result', test_id=test.id)
+
+        # Handle answer save/update
+        question_id = request.POST.get("question_id")
+        answer_text = request.POST.get("answer", "").strip()
         try:
-            question=Question.objects.get(id=question_id, test=test)
-            # Check if user already answered this question
+            question = Question.objects.get(id=question_id, test=test)
             existing_answer = Answer.objects.filter(question=question, user=request.user).first()
             if existing_answer:
                 existing_answer.answer_text = answer_text
                 existing_answer.save()
-                messages.success(request, "Answer updated successfully!")
             else:
-                Answer.objects.create(question=question, user=request.user, answer_text=answer_text)
-                messages.success(request, "Answer submitted successfully!")
+                if answer_text:
+                    Answer.objects.create(question=question, user=request.user, answer_text=answer_text)
             return redirect('take_test', test_id=test.id)
         except Question.DoesNotExist:
             messages.error(request, "Question does not exist.")
 
-    context={
+    # Build answered set for template
+    answered_ids = set(
+        Answer.objects.filter(user=request.user, question__test=test).values_list('question_id', flat=True)
+    )
+
+    context = {
         'test': test,
-        'questions': questions
+        'questions': questions,
+        'answered_ids': answered_ids,
+        'answered_count': len(answered_ids),
     }
     return render(request, 'take_test.html', context)
 
-# Test completed page
+# Test result page (replaces old test_completed)
+@login_required
+def test_result(request, test_id):
+    try:
+        test = Test.objects.get(id=test_id)
+        submission = TestSubmission.objects.get(test=test, user=request.user)
+    except (Test.DoesNotExist, TestSubmission.DoesNotExist):
+        return redirect('home')
+
+    questions = test.questions.all().order_by('id')
+    # Build answer map for this user
+    user_answers = {a.question_id: a for a in Answer.objects.filter(user=request.user, question__test=test)}
+
+    question_results = []
+    for q in questions:
+        ans = user_answers.get(q.id)
+        is_correct = None
+        if q.question_type == 'MCQ' and ans:
+            is_correct = ans.answer_text.upper() == (q.correct_answer or '').upper()
+        question_results.append({
+            'question': q,
+            'answer': ans,
+            'is_correct': is_correct,
+        })
+
+    total_marks = test.total_marks()
+    mcq_questions = questions.filter(question_type='MCQ').count()
+
+    context = {
+        'test': test,
+        'submission': submission,
+        'question_results': question_results,
+        'total_marks': total_marks,
+        'mcq_questions': mcq_questions,
+    }
+    return render(request, 'test_result.html', context)
+
+
+# Keep old URL working
 @login_required
 def test_completed(request, test_id):
+    return redirect('test_result', test_id=test_id)
+
+
+# Leaderboard for a test
+def leaderboard(request, test_id):
     try:
         test = Test.objects.get(id=test_id)
     except Test.DoesNotExist:
         return redirect('home')
-    
-    context = {'test': test}
-    return render(request, 'test_completed.html', context)
+
+    submissions = TestSubmission.objects.filter(test=test, is_completed=True)\
+        .select_related('user').order_by('-score', 'time_taken_seconds')
+
+    # Add rank
+    ranked = []
+    for i, sub in enumerate(submissions, 1):
+        ranked.append({'rank': i, 'submission': sub})
+
+    user_rank = None
+    if request.user.is_authenticated:
+        for entry in ranked:
+            if entry['submission'].user == request.user:
+                user_rank = entry['rank']
+                break
+
+    context = {
+        'test': test,
+        'ranked': ranked,
+        'user_rank': user_rank,
+        'total_marks': test.total_marks(),
+    }
+    return render(request, 'leaderboard.html', context)
+
+
+# Student profile / history
+@login_required
+def profile(request):
+    submissions = TestSubmission.objects.filter(user=request.user, is_completed=True)\
+        .select_related('test').order_by('-submitted_at')
+
+    history = []
+    for sub in submissions:
+        total = sub.test.total_marks() if sub.test else 0
+        history.append({
+            'submission': sub,
+            'total_marks': total,
+            'percentage': sub.percentage(),
+            'passed': sub.passed(),
+        })
+
+    context = {
+        'history': history,
+        'total_tests_taken': len(history),
+        'avg_score': round(sum(h['percentage'] for h in history) / len(history), 1) if history else 0,
+    }
+    return render(request, 'profile.html', context)
        
 
 def user_login(request):
@@ -172,13 +288,15 @@ def admin_dashboard(request):
                 # Create the test with timezone-aware datetimes
                 start_dt = timezone.make_aware(datetime.fromisoformat(start_time))
                 end_dt = timezone.make_aware(datetime.fromisoformat(end_time))
-                
+                passing_marks = int(request.POST.get('passing_marks', 0) or 0)
+
                 test = Test.objects.create(
                     name=name,
                     description=description,
                     start_time=start_dt,
                     end_time=end_dt,
                     duration_minutes=int(duration_minutes),
+                    passing_marks=passing_marks,
                     created_by=request.user,
                     is_active=True
                 )
@@ -195,13 +313,14 @@ def admin_dashboard(request):
                     q_description = request.POST.get(f'questions[{question_index}][description]')
                     
                     if q_title and q_description:
+                        q_marks = int(request.POST.get(f'questions[{question_index}][marks]', 1) or 1)
                         if q_type == 'MCQ':
                             option_a = request.POST.get(f'questions[{question_index}][option_a]')
                             option_b = request.POST.get(f'questions[{question_index}][option_b]')
                             option_c = request.POST.get(f'questions[{question_index}][option_c]')
                             option_d = request.POST.get(f'questions[{question_index}][option_d]')
                             correct_answer = request.POST.get(f'questions[{question_index}][correct_answer]')
-                            
+
                             if option_a and option_b and option_c and option_d and correct_answer:
                                 Question.objects.create(
                                     test=test,
@@ -213,6 +332,7 @@ def admin_dashboard(request):
                                     option_c=option_c,
                                     option_d=option_d,
                                     correct_answer=correct_answer,
+                                    marks=q_marks,
                                     user=request.user
                                 )
                                 questions_added += 1
@@ -223,6 +343,7 @@ def admin_dashboard(request):
                                 title=q_title,
                                 description=q_description,
                                 question_type=q_type,
+                                marks=q_marks,
                                 user=request.user
                             )
                             questions_added += 1
@@ -251,39 +372,30 @@ def admin_dashboard(request):
                 except Test.DoesNotExist:
                     messages.error(request, "Selected test not found.")
                     return redirect('admin_dashboard')
-            
+
+            marks = int(request.POST.get('marks', 1) or 1)
+
             if question_type == 'MCQ':
-                # Get MCQ options
                 option_a = request.POST.get('option_a')
                 option_b = request.POST.get('option_b')
                 option_c = request.POST.get('option_c')
                 option_d = request.POST.get('option_d')
                 correct_answer = request.POST.get('correct_answer')
-                
+
                 if option_a and option_b and option_c and option_d and correct_answer:
                     Question.objects.create(
-                        test=test,
-                        title=title,
-                        description=description,
-                        question_type=question_type,
-                        option_a=option_a,
-                        option_b=option_b,
-                        option_c=option_c,
-                        option_d=option_d,
-                        correct_answer=correct_answer,
-                        user=request.user
+                        test=test, title=title, description=description,
+                        question_type=question_type, option_a=option_a, option_b=option_b,
+                        option_c=option_c, option_d=option_d, correct_answer=correct_answer,
+                        marks=marks, user=request.user
                     )
                     messages.success(request, "MCQ Question added successfully!")
                 else:
                     messages.error(request, "Please fill all MCQ options and select correct answer.")
             else:
-                # Text question
                 Question.objects.create(
-                    test=test,
-                    title=title,
-                    description=description,
-                    question_type=question_type,
-                    user=request.user
+                    test=test, title=title, description=description,
+                    question_type=question_type, marks=marks, user=request.user
                 )
                 messages.success(request, "Textual Question added successfully!")
             return redirect('admin_dashboard')
@@ -359,17 +471,75 @@ def delete_answer(request, answer_id):
     if not (request.user.is_superuser or request.user.is_staff):
         messages.error(request, "You don't have permission to delete answers.")
         return redirect('home')
-    
+
     try:
         answer = Answer.objects.get(id=answer_id)
         answer.delete()
         messages.success(request, "Answer deleted successfully!")
     except Answer.DoesNotExist:
         messages.error(request, "Answer not found.")
-    
+
     return redirect('admin_dashboard')
-def admin_login(request):
-    from django.contrib.auth.forms import AuthenticationForm
+
+
+# Edit Test (Admin only)
+@login_required
+def edit_test(request, test_id):
+    if not (request.user.is_superuser or request.user.is_staff):
+        return redirect('home')
+    try:
+        test = Test.objects.get(id=test_id)
+    except Test.DoesNotExist:
+        messages.error(request, "Test not found.")
+        return redirect('admin_dashboard')
+
+    if request.method == 'POST':
+        test.name = request.POST.get('test_name', test.name)
+        test.description = request.POST.get('test_description', test.description)
+        test.duration_minutes = int(request.POST.get('duration_minutes', test.duration_minutes))
+        test.passing_marks = int(request.POST.get('passing_marks', test.passing_marks))
+        test.is_active = request.POST.get('is_active') == 'on'
+        start_time = request.POST.get('start_time')
+        end_time = request.POST.get('end_time')
+        if start_time:
+            test.start_time = timezone.make_aware(datetime.fromisoformat(start_time))
+        if end_time:
+            test.end_time = timezone.make_aware(datetime.fromisoformat(end_time))
+        test.save()
+        messages.success(request, f"Test '{test.name}' updated successfully!")
+        return redirect('admin_dashboard')
+
+    context = {'test': test}
+    return render(request, 'edit_test.html', context)
+
+
+# Edit Question (Admin only)
+@login_required
+def edit_question(request, question_id):
+    if not (request.user.is_superuser or request.user.is_staff):
+        return redirect('home')
+    try:
+        question = Question.objects.get(id=question_id)
+    except Question.DoesNotExist:
+        messages.error(request, "Question not found.")
+        return redirect('admin_dashboard')
+
+    if request.method == 'POST':
+        question.title = request.POST.get('title', question.title)
+        question.description = request.POST.get('description', question.description)
+        question.marks = int(request.POST.get('marks', question.marks))
+        if question.question_type == 'MCQ':
+            question.option_a = request.POST.get('option_a', question.option_a)
+            question.option_b = request.POST.get('option_b', question.option_b)
+            question.option_c = request.POST.get('option_c', question.option_c)
+            question.option_d = request.POST.get('option_d', question.option_d)
+            question.correct_answer = request.POST.get('correct_answer', question.correct_answer)
+        question.save()
+        messages.success(request, "Question updated successfully!")
+        return redirect('admin_dashboard')
+
+    context = {'question': question}
+    return render(request, 'edit_question.html', context)
     if request.method == "POST":
         form = AuthenticationForm(request, data=request.POST)
         form.fields['username'].widget.attrs['placeholder'] = 'Enter admin username'

@@ -1,0 +1,74 @@
+{% extends 'base.html' %}
+{% block title %}Edit Question — ExamHub{% endblock %}
+{% block body %}
+<div class="min-h-screen bg-slate-100 flex items-center justify-center p-6">
+    <div class="w-full max-w-2xl">
+        <div class="flex items-center gap-3 mb-6">
+            <a href="{% url 'admin_dashboard' %}" class="text-slate-500 hover:text-slate-800 transition text-sm">← Back to Dashboard</a>
+        </div>
+        <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-8">
+            <div class="flex items-center gap-3 mb-6">
+                <h1 class="text-2xl font-extrabold text-slate-900">Edit Question</h1>
+                <span class="text-xs font-bold px-2.5 py-1 rounded-full {% if question.question_type == 'MCQ' %}bg-purple-100 text-purple-700{% else %}bg-blue-100 text-blue-700{% endif %}">
+                    {{ question.question_type }}
+                </span>
+            </div>
+            {% if messages %}
+            {% for message in messages %}
+            <div class="mb-4 px-4 py-3 rounded-xl text-sm font-medium {% if message.tags == 'error' %}bg-red-50 text-red-700 border border-red-200{% else %}bg-green-50 text-green-700 border border-green-200{% endif %}">{{ message }}</div>
+            {% endfor %}
+            {% endif %}
+            <form method="POST" class="space-y-5">
+                {% csrf_token %}
+                <div>
+                    <label class="block text-sm font-semibold text-slate-700 mb-1.5">Question Title</label>
+                    <input type="text" name="title" value="{{ question.title }}" required class="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-800">
+                </div>
+                <div>
+                    <label class="block text-sm font-semibold text-slate-700 mb-1.5">Description / Question Body</label>
+                    <textarea name="description" rows="3" required class="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-800 resize-none">{{ question.description }}</textarea>
+                </div>
+                <div>
+                    <label class="block text-sm font-semibold text-slate-700 mb-1.5">Marks</label>
+                    <input type="number" name="marks" value="{{ question.marks }}" min="1" required class="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-800">
+                </div>
+                {% if question.question_type == 'MCQ' %}
+                <div class="space-y-3">
+                    <label class="block text-sm font-semibold text-slate-700">Options</label>
+                    {% for opt_key, opt_val in "A,B,C,D"|split:"," %}{% endfor %}
+                    <div class="flex items-center gap-3">
+                        <span class="w-8 h-8 bg-slate-100 rounded-lg flex items-center justify-center text-sm font-bold text-slate-600 flex-shrink-0">A</span>
+                        <input type="text" name="option_a" value="{{ question.option_a }}" placeholder="Option A" class="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-800">
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <span class="w-8 h-8 bg-slate-100 rounded-lg flex items-center justify-center text-sm font-bold text-slate-600 flex-shrink-0">B</span>
+                        <input type="text" name="option_b" value="{{ question.option_b }}" placeholder="Option B" class="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-800">
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <span class="w-8 h-8 bg-slate-100 rounded-lg flex items-center justify-center text-sm font-bold text-slate-600 flex-shrink-0">C</span>
+                        <input type="text" name="option_c" value="{{ question.option_c }}" placeholder="Option C" class="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-800">
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <span class="w-8 h-8 bg-slate-100 rounded-lg flex items-center justify-center text-sm font-bold text-slate-600 flex-shrink-0">D</span>
+                        <input type="text" name="option_d" value="{{ question.option_d }}" placeholder="Option D" class="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-800">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-sm font-semibold text-slate-700 mb-1.5">Correct Answer</label>
+                    <select name="correct_answer" class="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-800">
+                        <option value="A" {% if question.correct_answer == 'A' %}selected{% endif %}>A</option>
+                        <option value="B" {% if question.correct_answer == 'B' %}selected{% endif %}>B</option>
+                        <option value="C" {% if question.correct_answer == 'C' %}selected{% endif %}>C</option>
+                        <option value="D" {% if question.correct_answer == 'D' %}selected{% endif %}>D</option>
+                    </select>
+                </div>
+                {% endif %}
+                <div class="flex gap-3 pt-2">
+                    <button type="submit" class="gradient-bg text-white px-8 py-3 rounded-xl font-semibold hover:opacity-90 transition">Save Changes</button>
+                    <a href="{% url 'admin_dashboard' %}" class="bg-slate-100 text-slate-700 px-8 py-3 rounded-xl font-semibold hover:bg-slate-200 transition">Cancel</a>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

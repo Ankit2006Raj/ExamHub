@@ -1,0 +1,192 @@
+{% extends 'base.html' %}
+{% block title %}Dashboard — ExamHub{% endblock %}
+{% block body %}
+<div class="min-h-screen bg-slate-50">
+    <!-- Navbar -->
+    <nav class="bg-white border-b border-slate-200 sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="w-9 h-9 gradient-bg rounded-xl flex items-center justify-center text-white text-lg">🎓</div>
+                <span class="text-xl font-bold text-slate-900">ExamHub</span>
+            </div>
+            <div class="flex items-center gap-4">
+                {% if user.is_authenticated %}
+                    <div class="flex items-center gap-2 bg-slate-100 rounded-xl px-4 py-2">
+                        <div class="w-7 h-7 gradient-bg rounded-lg flex items-center justify-center text-white text-xs font-bold">
+                            {{ user.username|first|upper }}
+                        </div>
+                        <span class="text-sm font-semibold text-slate-700">{{ user.username }}</span>
+                    </div>
+                    {% if user.is_staff %}
+                    <a href="{% url 'admin_dashboard' %}" class="text-sm font-semibold text-indigo-600 hover:text-indigo-800 transition px-3 py-2 rounded-lg hover:bg-indigo-50">Dashboard</a>
+                    {% endif %}
+                    <a href="{% url 'logout' %}" class="text-sm font-semibold text-slate-500 hover:text-red-600 transition px-3 py-2 rounded-lg hover:bg-red-50">Sign Out</a>
+                {% else %}
+                    <a href="{% url 'login' %}" class="text-sm font-semibold text-slate-600 hover:text-indigo-600 transition px-4 py-2 rounded-lg hover:bg-slate-100">Sign In</a>
+                    <a href="{% url 'register' %}" class="text-sm font-semibold gradient-bg text-white px-4 py-2 rounded-lg hover:opacity-90 transition shadow-sm">Get Started</a>
+                {% endif %}
+            </div>
+        </div>
+    </nav>
+
+    <!-- Messages -->
+    {% if messages %}
+    <div class="max-w-7xl mx-auto px-6 pt-4 space-y-2">
+        {% for message in messages %}
+        <div class="flex items-center gap-3 px-5 py-3 rounded-xl text-sm font-medium
+            {% if message.tags == 'error' %}bg-red-50 text-red-700 border border-red-200
+            {% elif message.tags == 'success' %}bg-green-50 text-green-700 border border-green-200
+            {% else %}bg-blue-50 text-blue-700 border border-blue-200{% endif %}">
+            {% if message.tags == 'error' %}⚠️{% elif message.tags == 'success' %}✅{% else %}ℹ️{% endif %}
+            {{ message }}
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <!-- Hero -->
+    <div class="gradient-bg text-white">
+        <div class="max-w-7xl mx-auto px-6 py-16">
+            <div class="max-w-2xl">
+                <div class="inline-flex items-center gap-2 bg-white/15 rounded-full px-4 py-1.5 text-sm font-medium mb-6">
+                    <span class="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
+                    Live tests available now
+                </div>
+                <h1 class="text-5xl font-extrabold leading-tight mb-4">Test your knowledge.<br>Track your growth.</h1>
+                <p class="text-indigo-200 text-lg">Browse available exams, take tests at your own pace, and see where you stand.</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="max-w-7xl mx-auto px-6 py-12 space-y-12">
+
+        <!-- Available Tests -->
+        <section>
+            <div class="flex items-center gap-3 mb-6">
+                <div class="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
+                <h2 class="text-2xl font-bold text-slate-900">Available Now</h2>
+                <span class="bg-green-100 text-green-700 text-xs font-bold px-2.5 py-1 rounded-full">{{ available_tests|length }}</span>
+            </div>
+            {% if available_tests %}
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {% for test in available_tests %}
+                <div class="bg-white rounded-2xl border border-slate-200 p-6 card-hover shadow-sm">
+                    <div class="flex items-start justify-between mb-4">
+                        <div class="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center text-2xl">📝</div>
+                        <span class="bg-green-100 text-green-700 text-xs font-bold px-3 py-1 rounded-full">Live</span>
+                    </div>
+                    <h3 class="text-lg font-bold text-slate-900 mb-2">{{ test.name }}</h3>
+                    <p class="text-slate-500 text-sm mb-4 line-clamp-2">{{ test.description }}</p>
+                    <div class="flex items-center gap-4 text-xs text-slate-400 mb-5">
+                        <span class="flex items-center gap-1">⏱️ {{ test.duration_minutes }} min</span>
+                        <span class="flex items-center gap-1">❓ {{ test.questions.count }} questions</span>
+                    </div>
+                    <div class="text-xs text-slate-400 mb-5">Ends: {{ test.end_time|date:"M d, Y · H:i" }}</div>
+                    {% if user.is_authenticated %}
+                        <a href="{% url 'take_test' test.id %}" class="block w-full text-center gradient-bg text-white py-2.5 rounded-xl font-semibold text-sm hover:opacity-90 transition shadow-sm shadow-indigo-200">
+                            Start Test →
+                        </a>
+                    {% else %}
+                        <a href="{% url 'login' %}" class="block w-full text-center bg-slate-100 text-slate-600 py-2.5 rounded-xl font-semibold text-sm hover:bg-slate-200 transition">
+                            Login to Start
+                        </a>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="bg-white rounded-2xl border border-slate-200 p-12 text-center">
+                <div class="text-5xl mb-4">📭</div>
+                <p class="text-slate-500 font-medium">No tests available right now. Check back soon.</p>
+            </div>
+            {% endif %}
+        </section>
+
+        <!-- Upcoming Tests -->
+        {% if upcoming_tests %}
+        <section>
+            <div class="flex items-center gap-3 mb-6">
+                <div class="w-3 h-3 bg-amber-400 rounded-full"></div>
+                <h2 class="text-2xl font-bold text-slate-900">Upcoming</h2>
+                <span class="bg-amber-100 text-amber-700 text-xs font-bold px-2.5 py-1 rounded-full">{{ upcoming_tests|length }}</span>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {% for test in upcoming_tests %}
+                <div class="bg-white rounded-2xl border border-slate-200 p-6 card-hover shadow-sm opacity-80">
+                    <div class="flex items-start justify-between mb-4">
+                        <div class="w-12 h-12 bg-amber-100 rounded-xl flex items-center justify-center text-2xl">🕐</div>
+                        <span class="bg-amber-100 text-amber-700 text-xs font-bold px-3 py-1 rounded-full">Upcoming</span>
+                    </div>
+                    <h3 class="text-lg font-bold text-slate-900 mb-2">{{ test.name }}</h3>
+                    <p class="text-slate-500 text-sm mb-4 line-clamp-2">{{ test.description }}</p>
+                    <div class="flex items-center gap-4 text-xs text-slate-400 mb-3">
+                        <span>⏱️ {{ test.duration_minutes }} min</span>
+                        <span>❓ {{ test.questions.count }} questions</span>
+                    </div>
+                    <div class="bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5 text-xs text-amber-700 font-medium">
+                        🗓️ Starts {{ test.start_time|date:"M d, Y · H:i" }}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </section>
+        {% endif %}
+
+        <!-- Expired Tests -->
+        {% if expired_tests %}
+        <section>
+            <div class="flex items-center gap-3 mb-6">
+                <div class="w-3 h-3 bg-slate-400 rounded-full"></div>
+                <h2 class="text-2xl font-bold text-slate-900">Recently Expired</h2>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {% for test in expired_tests %}
+                <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm opacity-60">
+                    <div class="flex items-start justify-between mb-4">
+                        <div class="w-12 h-12 bg-slate-100 rounded-xl flex items-center justify-center text-2xl">📋</div>
+                        <span class="bg-slate-100 text-slate-500 text-xs font-bold px-3 py-1 rounded-full">Expired</span>
+                    </div>
+                    <h3 class="text-lg font-bold text-slate-700 mb-2">{{ test.name }}</h3>
+                    <p class="text-slate-400 text-sm mb-4 line-clamp-2">{{ test.description }}</p>
+                    <div class="text-xs text-slate-400">Ended {{ test.end_time|date:"M d, Y" }}</div>
+                </div>
+                {% endfor %}
+            </div>
+        </section>
+        {% endif %}
+
+    </div>
+
+    <!-- Footer -->
+    <footer class="border-t border-slate-200 mt-16 bg-white">
+        <div class="max-w-7xl mx-auto px-6 py-10">
+            <div class="flex flex-col md:flex-row items-center justify-between gap-6">
+                <div class="flex items-center gap-3">
+                    <div class="w-9 h-9 gradient-bg rounded-xl flex items-center justify-center text-white text-lg">🎓</div>
+                    <div>
+                        <div class="font-bold text-slate-900">ExamHub</div>
+                        <div class="text-xs text-slate-400">Built for learners everywhere</div>
+                    </div>
+                </div>
+                <div class="flex items-center gap-6 text-sm text-slate-500">
+                    <a href="https://github.com/Ankit2006Raj" target="_blank" rel="noopener noreferrer" class="flex items-center gap-2 hover:text-slate-900 transition">
+                        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+                        GitHub
+                    </a>
+                    <a href="https://www.linkedin.com/in/ankit-raj-226a36309" target="_blank" rel="noopener noreferrer" class="flex items-center gap-2 hover:text-indigo-600 transition">
+                        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 01-2.063-2.065 2.064 2.064 0 112.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>
+                        LinkedIn
+                    </a>
+                    <a href="mailto:ankit9905163014@gmail.com" class="flex items-center gap-2 hover:text-indigo-600 transition">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+                        Email
+                    </a>
+                </div>
+            </div>
+            <div class="border-t border-slate-100 mt-8 pt-6 text-center text-xs text-slate-400">
+                © 2026 ExamHub. Developed by <a href="https://github.com/Ankit2006Raj" target="_blank" class="text-indigo-500 hover:underline">Ankit Raj</a>. All rights reserved.
+            </div>
+        </div>
+    </footer>
+</div>
+{% endblock %}

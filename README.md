@@ -78,4 +78,4 @@ Developed by **Ankit Raj**
 
 ---
 
-© 2026 ExamHub. All rights reserved.
+© 2026 ExamHub. All right reserved.
